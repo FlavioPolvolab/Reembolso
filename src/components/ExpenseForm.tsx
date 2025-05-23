@@ -28,7 +28,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { CalendarIcon, Upload, Loader2 } from "lucide-react";
+import { CalendarIcon, Upload, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -37,16 +37,17 @@ import {
   fetchCostCenters,
 } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const formSchema = z.object({
-  name: z.string().min(1, { message: "Name is required" }),
-  description: z.string().min(1, { message: "Description is required" }),
-  amount: z.string().min(1, { message: "Amount is required" }),
-  purpose: z.string().min(1, { message: "Purpose is required" }),
-  costCenterId: z.string().min(1, { message: "Cost center is required" }),
-  categoryId: z.string().min(1, { message: "Category is required" }),
+  name: z.string().min(1, { message: "Nome é obrigatório" }),
+  description: z.string().min(1, { message: "Descrição é obrigatória" }),
+  amount: z.string().min(1, { message: "Valor é obrigatório" }),
+  purpose: z.string().min(1, { message: "Finalidade é obrigatória" }),
+  costCenterId: z.string().min(1, { message: "Centro de custo é obrigatório" }),
+  categoryId: z.string().min(1, { message: "Categoria é obrigatória" }),
   paymentDate: z.date({
-    required_error: "Payment date is required",
+    required_error: "Data de pagamento é obrigatória",
   }),
   receipts: z.any().optional(),
 });
@@ -64,23 +65,38 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
   const [categories, setCategories] = useState<any[]>([]);
   const [costCenters, setCostCenters] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     const loadFormData = async () => {
+      setError(null);
       try {
         const [categoriesData, costCentersData] = await Promise.all([
           fetchCategories(),
           fetchCostCenters(),
         ]);
+
+        if (!categoriesData || categoriesData.length === 0) {
+          throw new Error("Não foi possível carregar as categorias");
+        }
+
+        if (!costCentersData || costCentersData.length === 0) {
+          throw new Error("Não foi possível carregar os centros de custo");
+        }
+
         setCategories(categoriesData);
         setCostCenters(costCentersData);
-      } catch (error) {
-        console.error("Error loading form data:", error);
+      } catch (err) {
+        console.error("Error loading form data:", err);
+        setError(
+          "Falha ao carregar dados do formulário. Por favor, tente novamente.",
+        );
         toast({
-          title: "Error",
-          description: "Failed to load form data. Please try again.",
+          title: "Erro",
+          description:
+            "Falha ao carregar dados do formulário. Por favor, tente novamente.",
           variant: "destructive",
         });
       } finally {
@@ -125,10 +141,23 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
   };
 
   const submitForm = async (data: FormValues) => {
+    setError(null);
+
     if (!user) {
+      setError("Você precisa estar logado para enviar uma despesa.");
       toast({
-        title: "Error",
-        description: "You must be logged in to submit an expense.",
+        title: "Erro",
+        description: "Você precisa estar logado para enviar uma despesa.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (files.length === 0) {
+      setError("Por favor, anexe pelo menos um comprovante.");
+      toast({
+        title: "Erro",
+        description: "Por favor, anexe pelo menos um comprovante.",
         variant: "destructive",
       });
       return;
@@ -137,8 +166,28 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
     setIsSubmitting(true);
 
     try {
-      // Convert amount to number
-      const amountValue = parseFloat(data.amount.replace(/[^0-9.-]+/g, ""));
+      // Validate and convert amount to number
+      let amountValue: number;
+      try {
+        // Handle both comma and period as decimal separators
+        const normalizedAmount = data.amount
+          .replace(/\./g, "")
+          .replace(",", ".");
+        amountValue = parseFloat(normalizedAmount);
+
+        if (isNaN(amountValue) || amountValue <= 0) {
+          throw new Error("Valor inválido");
+        }
+      } catch (err) {
+        setError("Por favor, insira um valor válido.");
+        toast({
+          title: "Erro",
+          description: "Por favor, insira um valor válido.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
 
       const expenseData = {
         user_id: user.id,
@@ -149,13 +198,18 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
         cost_center_id: data.costCenterId,
         category_id: data.categoryId,
         payment_date: data.paymentDate.toISOString().split("T")[0],
+        status: "pending", // Add default status
       };
 
       const result = await createExpense(expenseData, files);
 
+      if (!result || result.error) {
+        throw new Error(result?.error || "Falha ao enviar despesa");
+      }
+
       toast({
-        title: "Success",
-        description: "Expense submitted successfully!",
+        title: "Sucesso",
+        description: "Despesa enviada com sucesso!",
       });
 
       reset();
@@ -168,11 +222,14 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
       if (onClose) {
         onClose();
       }
-    } catch (error) {
-      console.error("Error submitting expense:", error);
+    } catch (err: any) {
+      console.error("Error submitting expense:", err);
+      const errorMessage =
+        err.message || "Falha ao enviar despesa. Por favor, tente novamente.";
+      setError(errorMessage);
       toast({
-        title: "Error",
-        description: "Failed to submit expense. Please try again.",
+        title: "Erro",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -185,7 +242,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
       <Card className="w-full max-w-3xl mx-auto bg-white">
         <CardContent className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2">Loading form data...</span>
+          <span className="ml-2">Carregando dados do formulário...</span>
         </CardContent>
       </Card>
     );
@@ -195,20 +252,27 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
     <Card className="w-full max-w-3xl mx-auto bg-white">
       <CardHeader>
         <CardTitle className="text-2xl font-bold">
-          Expense Reimbursement Request
+          Solicitação de Reembolso de Despesa
         </CardTitle>
         <CardDescription>
-          Fill out the form below to submit your expense reimbursement request.
+          Preencha o formulário abaixo para enviar sua solicitação de reembolso
+          de despesa.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         <form onSubmit={handleSubmit(submitForm)} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">Nome</Label>
               <Input
                 id="name"
-                placeholder="Your name"
+                placeholder="Seu nome"
                 {...register("name")}
                 className={cn(errors.name && "border-red-500")}
               />
@@ -218,12 +282,33 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="amount">Amount (R$)</Label>
+              <Label htmlFor="amount">Valor (R$)</Label>
               <Input
                 id="amount"
-                placeholder="0.00"
+                placeholder="0,00"
                 {...register("amount")}
                 className={cn(errors.amount && "border-red-500")}
+                onBlur={(e) => {
+                  try {
+                    // Format the number with Brazilian currency format
+                    const value = e.target.value.replace(/[^0-9,.-]/g, "");
+                    if (value) {
+                      const normalizedValue = value
+                        .replace(/\./g, "")
+                        .replace(",", ".");
+                      const number = parseFloat(normalizedValue);
+                      if (!isNaN(number)) {
+                        e.target.value = number.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        });
+                      }
+                    }
+                  } catch (err) {
+                    // Keep the original value if formatting fails
+                    console.error("Error formatting amount:", err);
+                  }
+                }}
               />
               {errors.amount && (
                 <p className="text-sm text-red-500">{errors.amount.message}</p>
@@ -232,10 +317,10 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">Descrição</Label>
             <Textarea
               id="description"
-              placeholder="Describe your expense"
+              placeholder="Descreva sua despesa"
               {...register("description")}
               className={cn(errors.description && "border-red-500")}
             />
@@ -248,7 +333,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="purpose">Purpose</Label>
+              <Label htmlFor="purpose">Finalidade</Label>
               <Select
                 defaultValue="Reembolso"
                 onValueChange={(value) => setValue("purpose", value)}
@@ -257,7 +342,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                   id="purpose"
                   className={cn(errors.purpose && "border-red-500")}
                 >
-                  <SelectValue placeholder="Select purpose" />
+                  <SelectValue placeholder="Selecione a finalidade" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Reembolso">Reembolso</SelectItem>
@@ -270,7 +355,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="costCenterId">Cost Center</Label>
+              <Label htmlFor="costCenterId">Centro de Custo</Label>
               <Select
                 onValueChange={(value) => setValue("costCenterId", value)}
               >
@@ -278,14 +363,20 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                   id="costCenterId"
                   className={cn(errors.costCenterId && "border-red-500")}
                 >
-                  <SelectValue placeholder="Select cost center" />
+                  <SelectValue placeholder="Selecione o centro de custo" />
                 </SelectTrigger>
                 <SelectContent>
-                  {costCenters.map((center) => (
-                    <SelectItem key={center.id} value={center.id}>
-                      {center.name}
+                  {costCenters.length > 0 ? (
+                    costCenters.map((center) => (
+                      <SelectItem key={center.id} value={center.id}>
+                        {center.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-data" disabled>
+                      Nenhum centro de custo disponível
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
               {errors.costCenterId && (
@@ -298,20 +389,26 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <Label htmlFor="categoryId">Category</Label>
+              <Label htmlFor="categoryId">Categoria</Label>
               <Select onValueChange={(value) => setValue("categoryId", value)}>
                 <SelectTrigger
                   id="categoryId"
                   className={cn(errors.categoryId && "border-red-500")}
                 >
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
+                  {categories.length > 0 ? (
+                    categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-data" disabled>
+                      Nenhuma categoria disponível
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
               {errors.categoryId && (
@@ -322,7 +419,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentDate">Payment Date</Label>
+              <Label htmlFor="paymentDate">Data de Pagamento</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -333,7 +430,9 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(selectedDate, "PPP") : "Select date"}
+                    {selectedDate
+                      ? format(selectedDate, "dd/MM/yyyy")
+                      : "Selecione a data"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
@@ -342,6 +441,30 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                     selected={selectedDate}
                     onSelect={(date) => date && setValue("paymentDate", date)}
                     initialFocus
+                    locale={{
+                      localize: {
+                        day: (n) =>
+                          ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][n],
+                        month: (n) =>
+                          [
+                            "Janeiro",
+                            "Fevereiro",
+                            "Março",
+                            "Abril",
+                            "Maio",
+                            "Junho",
+                            "Julho",
+                            "Agosto",
+                            "Setembro",
+                            "Outubro",
+                            "Novembro",
+                            "Dezembro",
+                          ][n],
+                      },
+                      formatLong: {
+                        date: () => "dd/MM/yyyy",
+                      },
+                    }}
                   />
                 </PopoverContent>
               </Popover>
@@ -354,20 +477,27 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="receipts">Receipt Upload</Label>
+            <Label htmlFor="receipts" className="flex items-center">
+              Upload de Comprovante <span className="text-red-500 ml-1">*</span>
+            </Label>
             <div className="flex items-center justify-center w-full">
               <label
                 htmlFor="receipts"
-                className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100",
+                  files.length === 0 ? "border-red-300" : "border-gray-300",
+                )}
               >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="w-8 h-8 mb-2 text-gray-500" />
                   <p className="mb-2 text-sm text-gray-500">
-                    <span className="font-semibold">Click to upload</span> or
-                    drag and drop
+                    <span className="font-semibold">
+                      Clique para fazer upload
+                    </span>{" "}
+                    ou arraste e solte
                   </p>
                   <p className="text-xs text-gray-500">
-                    PDF, PNG, JPG (MAX. 10MB)
+                    PDF, PNG, JPG (MÁX. 10MB)
                   </p>
                 </div>
                 <input
@@ -375,13 +505,19 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                   type="file"
                   className="hidden"
                   multiple
+                  accept=".pdf,.png,.jpg,.jpeg"
                   onChange={handleFileChange}
                 />
               </label>
             </div>
+            {files.length === 0 && (
+              <p className="text-sm text-red-500">
+                Pelo menos um comprovante é obrigatório
+              </p>
+            )}
             {files.length > 0 && (
               <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Uploaded Files:</h4>
+                <h4 className="text-sm font-medium mb-2">Arquivos enviados:</h4>
                 <ul className="space-y-2">
                   {files.map((file, index) => (
                     <li
@@ -389,7 +525,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                       className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
                     >
                       <span className="text-sm truncate max-w-[80%]">
-                        {file.name}
+                        {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
                       </span>
                       <Button
                         type="button"
@@ -397,7 +533,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                         size="sm"
                         onClick={() => removeFile(index)}
                       >
-                        Remove
+                        Remover
                       </Button>
                     </li>
                   ))}
@@ -407,14 +543,18 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
           </div>
 
           <div className="pt-4">
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting || files.length === 0}
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Submitting...
+                  Enviando...
                 </>
               ) : (
-                "Submit Request"
+                "Enviar Solicitação"
               )}
             </Button>
           </div>
@@ -423,14 +563,18 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
       <CardFooter className="flex justify-between border-t pt-4">
         <Button
           variant="outline"
-          onClick={() => reset()}
+          onClick={() => {
+            reset();
+            setFiles([]);
+            setError(null);
+          }}
           disabled={isSubmitting}
         >
-          Reset Form
+          Limpar Formulário
         </Button>
         {onClose && (
           <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
-            Cancel
+            Cancelar
           </Button>
         )}
       </CardFooter>
