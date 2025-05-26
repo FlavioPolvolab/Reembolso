@@ -27,7 +27,7 @@ const adminSchema = z.object({
 type AdminFormValues = z.infer<typeof adminSchema>;
 
 const AdminPanel = () => {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, user: currentUser } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{
@@ -198,19 +198,23 @@ const AdminPanel = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-b hover:bg-gray-50">
-                      <td className="py-2 px-4">{user.name}</td>
-                      <td className="py-2 px-4">{user.email}</td>
+                  {users.map((userItem) => (
+                    <tr key={userItem.id} className="border-b hover:bg-gray-50">
+                      <td className="py-2 px-4">{userItem.name}</td>
+                      <td className="py-2 px-4">{userItem.email}</td>
                       <td className="py-2 px-4">
                         <span
-                          className={`px-2 py-1 rounded-full text-xs ${user.role === "admin" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}`}
+                          className={`px-2 py-1 rounded-full text-xs ${userItem.role === "admin" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}`}
                         >
-                          {user.role === "admin" ? "Administrador" : "Usuário"}
+                          {userItem.role === "admin"
+                            ? "Administrador"
+                            : "Usuário"}
                         </span>
                       </td>
                       <td className="py-2 px-4">
-                        {new Date(user.created_at).toLocaleDateString("pt-BR")}
+                        {new Date(userItem.created_at).toLocaleDateString(
+                          "pt-BR",
+                        )}
                       </td>
                     </tr>
                   ))}

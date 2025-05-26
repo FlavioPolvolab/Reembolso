@@ -1,12 +1,44 @@
-import { Suspense } from "react";
-import { useRoutes, Routes, Route } from "react-router-dom";
+import { Suspense, useEffect } from "react";
+import {
+  useRoutes,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import Home from "./components/home";
 import LoginForm from "./components/auth/LoginForm";
 import SignupForm from "./components/auth/SignupForm";
 import AuthLayout from "./components/layout/AuthLayout";
 import AdminPanel from "./components/admin/AdminPanel";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import routes from "tempo-routes";
+
+// Componente para proteger rotas baseado em papéis
+const RoleProtectedRoute = ({
+  children,
+  requiredRole,
+}: {
+  children: React.ReactNode;
+  requiredRole: string;
+}) => {
+  const { isLoading, hasRole } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !hasRole(requiredRole as any)) {
+      navigate("/", { replace: true, state: { from: location } });
+    }
+  }, [isLoading, hasRole, requiredRole, navigate, location]);
+
+  if (isLoading) {
+    return <p>Carregando...</p>;
+  }
+
+  return hasRole(requiredRole as any) ? <>{children}</> : null;
+};
 
 function App() {
   return (
@@ -21,7 +53,14 @@ function App() {
 
             <Route element={<AuthLayout requireAuth={true} />}>
               <Route path="/" element={<Home />} />
-              <Route path="/admin" element={<AdminPanel />} />
+              <Route
+                path="/admin"
+                element={
+                  <RoleProtectedRoute requiredRole="admin">
+                    <AdminPanel />
+                  </RoleProtectedRoute>
+                }
+              />
             </Route>
 
             {/* Add this to allow Tempo routes to work */}

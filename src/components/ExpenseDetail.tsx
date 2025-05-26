@@ -27,9 +27,9 @@ interface Receipt {
 }
 
 interface ExpenseDetailProps {
-  expenseId?: string;
-  isOpen?: boolean;
-  onClose?: () => void;
+  expenseId: string;
+  isOpen: boolean;
+  onClose: () => void;
   onStatusChange?: () => void;
 }
 

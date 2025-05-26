@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,69 +8,70 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Loader2,
 } from "lucide-react";
 import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
 import ExpenseForm from "./ExpenseForm";
 import ExpenseDetail from "./ExpenseDetail";
+import { fetchExpenses } from "@/services/expenseService";
+import { useToast } from "@/components/ui/use-toast";
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showExpenseDetail, setShowExpenseDetail] = useState(false);
-  const [selectedExpense, setSelectedExpense] = useState(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(
+    null,
+  );
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filters, setFilters] = useState({});
+  const { toast } = useToast();
 
-  // Mock data for demonstration
-  const mockExpenses = [
-    {
-      id: "1",
-      name: "Polvo",
-      description: "Almoço no território",
-      amount: 445.22,
-      purpose: "Reembolso",
-      costCenter: "Babaçu",
-      category: "Viagens",
-      paymentDate: "2024-10-25",
-      status: "pending",
-      submittedDate: "2024-10-24",
-      submittedBy: "Gabi",
-      receiptUrl:
-        "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&q=80",
-    },
-    {
-      id: "2",
-      name: "Polvo",
-      description: "Táxi aeroporto",
-      amount: 271.73,
-      purpose: "Reembolso",
-      costCenter: "Institucional",
-      category: "Viagens",
-      paymentDate: "2024-10-25",
-      status: "approved",
-      submittedDate: "2024-10-24",
-      submittedBy: "Gabi",
-      receiptUrl:
-        "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&q=80",
-    },
-    {
-      id: "3",
-      name: "Polvo",
-      description: "Microfone e estabilizador",
-      amount: 786.93,
-      purpose: "Reembolso",
-      costCenter: "Institucional",
-      category: "Escritório",
-      paymentDate: "2024-10-25",
-      status: "rejected",
-      submittedDate: "2024-10-24",
-      submittedBy: "Gabi",
-      receiptUrl:
-        "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&q=80",
-    },
-  ];
+  // Carregar despesas do banco de dados
+  useEffect(() => {
+    loadExpenses();
+  }, [activeTab, filters]);
 
-  const handleViewExpense = (expense) => {
-    setSelectedExpense(expense);
+  const loadExpenses = async () => {
+    setIsLoading(true);
+    try {
+      // Combinar filtros com o filtro de status baseado na aba ativa
+      const statusFilter = activeTab !== "all" ? { status: activeTab } : {};
+      const combinedFilters = { ...filters, ...statusFilter };
+
+      const data = await fetchExpenses(combinedFilters);
+
+      // Mapear dados para o formato esperado pelo ExpenseTable
+      const formattedExpenses = data.map((expense) => ({
+        id: expense.id,
+        name: expense.users?.name || "Desconhecido",
+        description: expense.description,
+        amount: expense.amount,
+        status: expense.status,
+        date: expense.submitted_date,
+        purpose: expense.purpose,
+        costCenter: expense.cost_centers?.name || "",
+        category: expense.categories?.name || "",
+        paymentDate: expense.payment_date,
+      }));
+
+      setExpenses(formattedExpenses);
+    } catch (error) {
+      console.error("Erro ao carregar despesas:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as despesas. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleViewDetails = (expense) => {
+    setSelectedExpenseId(expense.id);
     setShowExpenseDetail(true);
   };
 
@@ -80,19 +81,41 @@ const Home = () => {
 
   const handleCloseForm = () => {
     setShowExpenseForm(false);
+    // Recarregar despesas após fechar o formulário para mostrar novas entradas
+    loadExpenses();
   };
 
   const handleCloseDetail = () => {
     setShowExpenseDetail(false);
-    setSelectedExpense(null);
+    setSelectedExpenseId(null);
+    // Recarregar despesas após fechar os detalhes para refletir possíveis mudanças de status
+    loadExpenses();
   };
 
-  const filteredExpenses = mockExpenses.filter((expense) => {
-    if (activeTab === "pending") return expense.status === "pending";
-    if (activeTab === "approved") return expense.status === "approved";
-    if (activeTab === "rejected") return expense.status === "rejected";
-    return true;
-  });
+  const handleApprove = async (expense) => {
+    // Esta função não é usada diretamente aqui, mas é passada para o ExpenseTable
+    // A aprovação real acontece no componente ExpenseDetail
+  };
+
+  const handleReject = async (expense) => {
+    // Esta função não é usada diretamente aqui, mas é passada para o ExpenseTable
+    // A rejeição real acontece no componente ExpenseDetail
+  };
+
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+  };
+
+  const handleStatusChange = () => {
+    // Recarregar despesas quando o status mudar (aprovado/rejeitado)
+    loadExpenses();
+  };
+
+  // Contar despesas por status
+  const pendingCount = expenses.filter((e) => e.status === "pending").length;
+  const approvedCount = expenses.filter((e) => e.status === "approved").length;
+  const rejectedCount = expenses.filter((e) => e.status === "rejected").length;
+  const totalCount = expenses.length;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -116,7 +139,7 @@ const Home = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockExpenses.length}</div>
+              <div className="text-2xl font-bold">{totalCount}</div>
             </CardContent>
           </Card>
           <Card className="bg-white">
@@ -128,9 +151,7 @@ const Home = () => {
             <CardContent>
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-amber-500" />
-                <span className="text-2xl font-bold">
-                  {mockExpenses.filter((e) => e.status === "pending").length}
-                </span>
+                <span className="text-2xl font-bold">{pendingCount}</span>
               </div>
             </CardContent>
           </Card>
@@ -143,9 +164,7 @@ const Home = () => {
             <CardContent>
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-2xl font-bold">
-                  {mockExpenses.filter((e) => e.status === "approved").length}
-                </span>
+                <span className="text-2xl font-bold">{approvedCount}</span>
               </div>
             </CardContent>
           </Card>
@@ -158,9 +177,7 @@ const Home = () => {
             <CardContent>
               <div className="flex items-center gap-2">
                 <XCircle className="h-4 w-4 text-red-500" />
-                <span className="text-2xl font-bold">
-                  {mockExpenses.filter((e) => e.status === "rejected").length}
-                </span>
+                <span className="text-2xl font-bold">{rejectedCount}</span>
               </div>
             </CardContent>
           </Card>
@@ -187,33 +204,51 @@ const Home = () => {
             </TabsTrigger>
           </TabsList>
 
-          <FilterBar />
+          <FilterBar onFilterChange={handleFilterChange} />
 
-          <TabsContent value="pending" className="mt-4">
-            <ExpenseTable
-              expenses={filteredExpenses}
-              onViewExpense={handleViewExpense}
-            />
-          </TabsContent>
-          <TabsContent value="approved" className="mt-4">
-            <ExpenseTable
-              expenses={filteredExpenses}
-              onViewExpense={handleViewExpense}
-            />
-          </TabsContent>
-          <TabsContent value="rejected" className="mt-4">
-            <ExpenseTable
-              expenses={filteredExpenses}
-              onViewExpense={handleViewExpense}
-            />
-          </TabsContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center p-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="ml-2">Carregando despesas...</span>
+            </div>
+          ) : (
+            <>
+              <TabsContent value="pending" className="mt-4">
+                <ExpenseTable
+                  expenses={expenses.filter((e) => e.status === "pending")}
+                  onViewDetails={handleViewDetails}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                />
+              </TabsContent>
+              <TabsContent value="approved" className="mt-4">
+                <ExpenseTable
+                  expenses={expenses.filter((e) => e.status === "approved")}
+                  onViewDetails={handleViewDetails}
+                />
+              </TabsContent>
+              <TabsContent value="rejected" className="mt-4">
+                <ExpenseTable
+                  expenses={expenses.filter((e) => e.status === "rejected")}
+                  onViewDetails={handleViewDetails}
+                />
+              </TabsContent>
+            </>
+          )}
         </Tabs>
       </div>
 
-      {showExpenseForm && <ExpenseForm onClose={handleCloseForm} />}
+      {showExpenseForm && (
+        <ExpenseForm onClose={handleCloseForm} onSubmit={handleCloseForm} />
+      )}
 
-      {showExpenseDetail && selectedExpense && (
-        <ExpenseDetail expense={selectedExpense} onClose={handleCloseDetail} />
+      {showExpenseDetail && selectedExpenseId && (
+        <ExpenseDetail
+          expenseId={selectedExpenseId}
+          isOpen={showExpenseDetail}
+          onClose={handleCloseDetail}
+          onStatusChange={handleStatusChange}
+        />
       )}
     </div>
   );

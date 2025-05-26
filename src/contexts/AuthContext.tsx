@@ -2,12 +2,16 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
+type UserRole = "submitter" | "approver" | "rejector" | "deleter";
+
 type AuthContextType = {
   session: Session | null;
   user: User | null;
   profile: any | null;
   isLoading: boolean;
   isAdmin: boolean;
+  userRoles: UserRole[];
+  hasRole: (role: UserRole) => boolean;
   signIn: (
     email: string,
     password: string,
@@ -36,6 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [profile, setProfile] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
 
   useEffect(() => {
     // Get initial session
@@ -61,6 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         setProfile(null);
         setIsAdmin(false);
+        setUserRoles([]);
         setIsLoading(false);
       }
     });
@@ -112,6 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               if (newData) {
                 setProfile(newData);
                 setIsAdmin(newData?.role === "admin");
+                setUserRoles(newData?.roles || []);
                 setIsLoading(false);
                 return;
               }
@@ -121,15 +128,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
         setProfile(null);
         setIsAdmin(false);
+        setUserRoles([]);
       } else {
         console.log("Perfil de usuário carregado:", data);
         setProfile(data);
         setIsAdmin(data?.role === "admin");
+        setUserRoles(data?.roles || []);
       }
     } catch (error) {
       console.error("Erro ao buscar perfil do usuário:", error);
       setProfile(null);
       setIsAdmin(false);
+      setUserRoles([]);
     } finally {
       setIsLoading(false);
     }
@@ -202,12 +212,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     await supabase.auth.signOut();
   };
 
+  // Função para verificar se o usuário tem um papel específico
+  const hasRole = (role: UserRole): boolean => {
+    if (isAdmin) return true; // Administradores têm todos os papéis
+    return userRoles.includes(role);
+  };
+
   const value = {
     session,
     user,
     profile,
     isLoading,
     isAdmin,
+    userRoles,
+    hasRole,
     signIn,
     signUp,
     signOut,

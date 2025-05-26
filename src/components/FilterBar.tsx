@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Calendar, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { format } from "date-fns";
+import { fetchCategories, fetchCostCenters } from "@/services/expenseService";
 
 interface FilterBarProps {
   onFilterChange?: (filters: {
@@ -36,6 +37,26 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
     from: Date | undefined;
     to: Date | undefined;
   }>({ from: undefined, to: undefined });
+  const [categories, setCategories] = useState<any[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
+
+  // Carregar categorias e centros de custo do banco de dados
+  useEffect(() => {
+    const loadFilterData = async () => {
+      try {
+        const [categoriesData, costCentersData] = await Promise.all([
+          fetchCategories(),
+          fetchCostCenters(),
+        ]);
+        setCategories(categoriesData || []);
+        setCostCenters(costCentersData || []);
+      } catch (error) {
+        console.error("Erro ao carregar dados para filtros:", error);
+      }
+    };
+
+    loadFilterData();
+  }, []);
 
   const handleFilterChange = () => {
     onFilterChange({
@@ -68,7 +89,7 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search expenses..."
+            placeholder="Buscar despesas..."
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -81,37 +102,54 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="pending">Pendente</SelectItem>
+              <SelectItem value="approved">Aprovado</SelectItem>
+              <SelectItem value="rejected">Rejeitado</SelectItem>
             </SelectContent>
           </Select>
 
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Category" />
+              <SelectValue placeholder="Categoria" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="travel">Travel</SelectItem>
-              <SelectItem value="office">Office</SelectItem>
-              <SelectItem value="personal">Personal</SelectItem>
-              <SelectItem value="projects">Projects</SelectItem>
-              <SelectItem value="marketing">Marketing</SelectItem>
+              {categories.length > 0 ? (
+                categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="" disabled>
+                  Carregando...
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
 
           <Select value={costCenter} onValueChange={setCostCenter}>
             <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Cost Center" />
+              <SelectValue placeholder="Centro de Custo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="institutional">Institutional</SelectItem>
-              <SelectItem value="babacu">Babaçu</SelectItem>
-              <SelectItem value="mel">Mel</SelectItem>
-              <SelectItem value="milho">Milho</SelectItem>
-              <SelectItem value="cacau">Cacau</SelectItem>
-              <SelectItem value="caju">Caju</SelectItem>
-              <SelectItem value="novos-projetos">Novos Projetos</SelectItem>
+              {costCenters.length > 0 ? (
+                costCenters.map((center) => (
+                  <SelectItem
+                    key={
+                      center.id || `cost-center-${center.name || Date.now()}`
+                    }
+                    value={
+                      center.id || `cost-center-${center.name || Date.now()}`
+                    }
+                  >
+                    {center.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="loading-cost-centers" disabled>
+                  Carregando...
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
 
@@ -125,14 +163,14 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
                 {dateRange.from ? (
                   dateRange.to ? (
                     <>
-                      {format(dateRange.from, "LLL dd, y")} -{" "}
-                      {format(dateRange.to, "LLL dd, y")}
+                      {format(dateRange.from, "dd/MM/yyyy")} -{" "}
+                      {format(dateRange.to, "dd/MM/yyyy")}
                     </>
                   ) : (
-                    format(dateRange.from, "LLL dd, y")
+                    format(dateRange.from, "dd/MM/yyyy")
                   )
                 ) : (
-                  <span>Date Range</span>
+                  <span>Período</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -148,12 +186,12 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
 
           <Button onClick={handleFilterChange} className="gap-2">
             <Filter className="h-4 w-4" />
-            Apply Filters
+            Aplicar Filtros
           </Button>
 
           <Button variant="outline" onClick={resetFilters} className="gap-2">
             <X className="h-4 w-4" />
-            Reset
+            Limpar
           </Button>
         </div>
       </div>
