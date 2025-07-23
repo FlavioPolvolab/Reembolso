@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Table, TableHead, TableRow, TableCell, TableBody } from "@/components/ui/table";
 import { PurchaseOrder, PurchaseOrderReceipt, PurchaseOrderItem } from "@/types/purchaseOrder";
-import { uploadPurchaseOrderReceipt, fetchPurchaseOrderItems, addPurchaseOrderItem, deletePurchaseOrderItem, approvePurchaseOrder, rejectPurchaseOrder, deletePurchaseOrder } from "@/services/purchaseOrderService";
+import { uploadPurchaseOrderReceipt, fetchPurchaseOrderItems, addPurchaseOrderItem, deletePurchaseOrderItem, approvePurchaseOrder, rejectPurchaseOrder, deletePurchaseOrder, updatePurchaseOrderItem } from "@/services/purchaseOrderService";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
@@ -46,6 +46,8 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
   const [modalLoading, setModalLoading] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editItems, setEditItems] = useState<{ [id: string]: { name: string; quantity: number; unit_price: number; saving?: boolean } }>({});
+  console.log("editItems state:", editItems);
 
   useEffect(() => {
     let isCurrent = true;
@@ -246,177 +248,263 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
 
   if (!pedido) return <div className="p-8 text-red-500">Pedido não encontrado.</div>;
 
+  console.log("Status do pedido:", pedido?.status);
+
   return (
-    <div className="flex justify-center items-center min-h-[80vh] bg-background p-4">
-      <Card className="w-full max-w-4xl">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold mb-2">Detalhe do Pedido de Compra</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <div className="mb-2"><strong>Título:</strong> {pedido.title}</div>
-              <div className="mb-2"><strong>Descrição:</strong> {pedido.description || "-"}</div>
-              <div className="mb-2"><strong>Valor Total:</strong> R$ {pedido.total_amount?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
-              <div className="mb-2">
-                <strong>Pagamento:</strong> {pedido.is_paid ? (
-                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs ml-1">Pago</span>
-                ) : (
-                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs ml-1">Pendente</span>
-                )}
-              </div>
-              <div className="mb-2"><strong>Status:</strong> <span className="capitalize">{pedido.status}</span></div>
+    <Dialog open={!!onClose} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl w-full p-8 sm:rounded-xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-bold mb-2">Detalhe do Pedido de Compra</DialogTitle>
+        </DialogHeader>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <div className="mb-2"><strong>Título:</strong> {pedido.title}</div>
+            <div className="mb-2"><strong>Valor Total:</strong> R$ {pedido.total_amount?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
+            <div className="mb-2">
+              <strong>Pagamento:</strong> {pedido.is_paid ? (
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs ml-1">Pago</span>
+              ) : (
+                <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs ml-1">Pendente</span>
+              )}
+            </div>
+            <div className="mb-2"><strong>Status:</strong> <span className="capitalize">{pedido.status}</span></div>
+          </div>
+          <div>
+            <div className="mb-2">
+              <label className="block font-medium mb-1">Enviar novo comprovante</label>
+              <input type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} />
             </div>
             <div>
-              <div className="mb-2">
-                <label className="block font-medium mb-1">Enviar novo comprovante</label>
-                <input type="file" accept="image/*,application/pdf" onChange={handleUpload} disabled={uploading} />
-              </div>
-              <div>
-                <h3 className="font-medium mb-2">Comprovantes</h3>
-                {receipts.length === 0 ? (
-                  <p className="text-gray-500">Nenhum comprovante enviado.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {receipts.map((r) => (
-                      <li key={r.id} className="flex items-center gap-2">
-                        <span className="truncate max-w-xs">{r.file_name}</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            setModalLoading(true);
-                            setImgError(false);
-                            try {
-                              const { data, error } = await (supabase as any).storage
-                                .from("receipts")
-                                .createSignedUrl(r.storage_path, 60 * 10); // 10 minutos
-                              if (error || !data?.signedUrl) throw error || new Error("Erro ao gerar link assinado");
-                              setModalUrl(data.signedUrl);
-                              setModalType(r.file_type);
-                            } catch (e) {
-                              setModalUrl(null);
-                              setModalType(null);
-                              setImgError(true);
-                            } finally {
-                              setModalLoading(false);
-                            }
-                          }}
-                        >
-                          Visualizar
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <h3 className="font-medium mb-2">Comprovantes</h3>
+              {receipts.length === 0 ? (
+                <p className="text-gray-500">Nenhum comprovante enviado.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {receipts.map((r) => (
+                    <li key={r.id} className="flex items-center gap-2">
+                      <span className="truncate max-w-xs">{r.file_name}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          setModalLoading(true);
+                          setImgError(false);
+                          try {
+                            const { data, error } = await (supabase as any).storage
+                              .from("receipts")
+                              .createSignedUrl(r.storage_path, 60 * 10); // 10 minutos
+                            if (error || !data?.signedUrl) throw error || new Error("Erro ao gerar link assinado");
+                            setModalUrl(data.signedUrl);
+                            setModalType(r.file_type);
+                          } catch (e) {
+                            setModalUrl(null);
+                            setModalType(null);
+                            setImgError(true);
+                          } finally {
+                            setModalLoading(false);
+                          }
+                        }}
+                      >
+                        Visualizar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
-
-          <div className="mb-8">
-            <h3 className="font-medium mb-2">Itens do Pedido</h3>
-            <form onSubmit={handleAddItem} className="flex gap-2 mb-4 flex-wrap">
-              <input
-                className="border rounded px-2 py-1"
-                placeholder="Nome do item"
-                value={itemName}
-                onChange={e => setItemName(e.target.value)}
-                required
-              />
-              <input
-                className="border rounded px-2 py-1 w-20"
-                type="number"
-                min="1"
-                value={itemQty}
-                onChange={e => setItemQty(Number(e.target.value))}
-                required
-              />
-              <input
-                className="border rounded px-2 py-1 w-28"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Preço unitário"
-                value={itemPrice}
-                onChange={e => setItemPrice(e.target.value)}
-                required
-              />
-              <Button type="submit" disabled={addingItem}>Adicionar</Button>
-            </form>
-            {items.length === 0 ? (
-              <p className="text-gray-500">Nenhum item adicionado.</p>
-            ) : (
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Nome</TableCell>
-                    <TableCell>Qtd</TableCell>
-                    <TableCell>Unitário</TableCell>
-                    <TableCell>Total</TableCell>
-                    <TableCell>Ações</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>R$ {item.unit_price?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>R$ {item.total_price?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteItem(item.id)}>
-                          Excluir
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <div className="mb-2 col-span-2">
+            <strong>Descrição:</strong>
+            <div className="break-words whitespace-pre-line mt-1">
+              {pedido.description || "-"}
+            </div>
+          </div>
+        </div>
+        <div className="mb-8">
+          <h3 className="font-medium mb-2">Itens do Pedido</h3>
+          <form onSubmit={handleAddItem} className="flex gap-2 mb-4 flex-wrap">
+            <input
+              className="border rounded px-2 py-1"
+              placeholder="Nome do item"
+              value={itemName}
+              onChange={e => setItemName(e.target.value)}
+              required
+            />
+            <input
+              className="border rounded px-2 py-1 w-20"
+              type="number"
+              min="1"
+              value={itemQty}
+              onChange={e => setItemQty(Number(e.target.value))}
+              required
+            />
+            <input
+              className="border rounded px-2 py-1 w-28"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Preço unitário"
+              value={itemPrice}
+              onChange={e => setItemPrice(e.target.value)}
+              required
+            />
+            <Button type="submit" disabled={addingItem}>Adicionar</Button>
+          </form>
+          {items.length === 0 ? (
+            <p className="text-gray-500">Nenhum item adicionado.</p>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nome</TableCell>
+                  <TableCell>Qtd</TableCell>
+                  <TableCell>Unitário</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell>Ações</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {items.map((item) => {
+                  console.log("Renderizando item", item.id, "status:", pedido.status);
+                  if (true) { // Forçar renderização do bloco de edição para depuração
+                    const edit = editItems[item.id] || { name: item.name, quantity: item.quantity, unit_price: item.unit_price };
+                    console.log("Renderizando botão salvar para", item.id, edit);
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <input
+                            className="border rounded px-2 py-1 w-full"
+                            value={edit.name}
+                            onChange={e => setEditItems(editItems => ({
+                              ...editItems,
+                              [item.id]: { ...edit, name: e.target.value }
+                            }))}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <input
+                            className="border rounded px-2 py-1 w-16"
+                            type="number"
+                            min="1"
+                            value={edit.quantity}
+                            onChange={e => setEditItems(editItems => ({
+                              ...editItems,
+                              [item.id]: { ...edit, quantity: Number(e.target.value) }
+                            }))}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <input
+                            className="border rounded px-2 py-1 w-24"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={edit.unit_price}
+                            onChange={e => setEditItems(editItems => ({
+                              ...editItems,
+                              [item.id]: { ...edit, unit_price: Number(e.target.value) }
+                            }))}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          R$ {(edit.unit_price * edit.quantity).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              console.log("Cliquei em salvar", item.id, edit);
+                              setEditItems(editItems => ({
+                                ...editItems,
+                                [item.id]: { ...edit, saving: true }
+                              }));
+                              try {
+                                await updatePurchaseOrderItem(item.id, edit.name, edit.quantity, edit.unit_price);
+                                const itemsData = await fetchPurchaseOrderItems(pedidoId);
+                                setItems(itemsData || []);
+                                setEditItems(editItems => ({ ...editItems, [item.id]: undefined }));
+                                toast({ title: "Item atualizado!" });
+                              } catch (e) {
+                                toast({ title: "Erro ao atualizar item", variant: "destructive" });
+                                console.error("Erro ao atualizar item:", e);
+                                alert("Erro ao atualizar item: " + (e?.message || JSON.stringify(e)));
+                              } finally {
+                                setEditItems(editItems => ({
+                                  ...editItems,
+                                  [item.id]: { ...edit, saving: false }
+                                }));
+                              }
+                            }}
+                            // disabled={!!edit.saving} // Removido para depuração
+                          >
+                            {edit.saving ? "Salvando..." : "Salvar"}
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteItem(item.id)}>
+                            Excluir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  } else {
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                        <TableCell>R$ {item.unit_price?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>R$ {item.total_price?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteItem(item.id)}>
+                            Excluir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+        {(isAdmin || (hasRole && hasRole("approver"))) && (pedido.status === "pending" || pedido.status === "approved") && (
+          <div className="flex gap-2 mb-6 items-center">
+            {pedido.status === "pending" && (
+              <Button onClick={handleApprove} disabled={actionLoading}>Aprovar</Button>
+            )}
+            {pedido.status === "approved" && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!pedido.is_paid}
+                  onChange={e => handleSetPaid(e.target.checked)}
+                  disabled={actionLoading}
+                />
+                Marcar como pago
+              </label>
+            )}
+            {pedido.status === "pending" && showRejectForm ? (
+              <>
+                <input
+                  className="border rounded px-2 py-1"
+                  placeholder="Motivo da rejeição"
+                  value={rejectionReason}
+                  onChange={e => setRejectionReason(e.target.value)}
+                  disabled={actionLoading}
+                />
+                <Button onClick={handleReject} disabled={actionLoading || !rejectionReason.trim()} variant="destructive">Confirmar Rejeição</Button>
+                <Button onClick={() => setShowRejectForm(false)} disabled={actionLoading} variant="outline">Cancelar</Button>
+              </>
+            ) : pedido.status === "pending" ? (
+              <Button onClick={() => setShowRejectForm(true)} disabled={actionLoading} variant="destructive">Rejeitar</Button>
+            ) : null}
+            {(pedido.status === "pending" || pedido.status === "approved") && (
+              <Button onClick={handleDelete} disabled={actionLoading} variant="destructive">Excluir</Button>
             )}
           </div>
-
-          {(isAdmin || (hasRole && hasRole("approver"))) && (pedido.status === "pending" || pedido.status === "approved") && (
-            <div className="flex gap-2 mb-6 items-center">
-              {pedido.status === "pending" && (
-                <Button onClick={handleApprove} disabled={actionLoading}>Aprovar</Button>
-              )}
-              {pedido.status === "approved" && (
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={!!pedido.is_paid}
-                    onChange={e => handleSetPaid(e.target.checked)}
-                    disabled={actionLoading}
-                  />
-                  Marcar como pago
-                </label>
-              )}
-              {pedido.status === "pending" && showRejectForm ? (
-                <>
-                  <input
-                    className="border rounded px-2 py-1"
-                    placeholder="Motivo da rejeição"
-                    value={rejectionReason}
-                    onChange={e => setRejectionReason(e.target.value)}
-                    disabled={actionLoading}
-                  />
-                  <Button onClick={handleReject} disabled={actionLoading || !rejectionReason.trim()} variant="destructive">Confirmar Rejeição</Button>
-                  <Button onClick={() => setShowRejectForm(false)} disabled={actionLoading} variant="outline">Cancelar</Button>
-                </>
-              ) : pedido.status === "pending" ? (
-                <Button onClick={() => setShowRejectForm(true)} disabled={actionLoading} variant="destructive">Rejeitar</Button>
-              ) : null}
-              {(pedido.status === "pending" || pedido.status === "approved") && (
-                <Button onClick={handleDelete} disabled={actionLoading} variant="destructive">Excluir</Button>
-              )}
-            </div>
-          )}
-
-          {onClose && (
-            <Button variant="outline" onClick={onClose}>Voltar</Button>
-          )}
-        </CardContent>
-      </Card>
+        )}
+        {onClose && (
+          <Button variant="outline" onClick={onClose}>Voltar</Button>
+        )}
+      </DialogContent>
       {/* Modal de visualização de comprovante */}
       <Dialog open={!!modalUrl || modalLoading} onOpenChange={open => { if (!open) { setModalUrl(null); setImgError(false); setModalLoading(false); } }}>
         <DialogContent className="max-w-2xl">
@@ -439,7 +527,7 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+    </Dialog>
   );
 };
 

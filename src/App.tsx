@@ -1,4 +1,4 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   useRoutes,
   Routes,
@@ -44,6 +44,7 @@ const RoleProtectedRoute = ({
 };
 
 function App() {
+  const [openNovoPedido, setOpenNovoPedido] = useState(true); // ou false, conforme sua lógica
   return (
     <AuthProvider>
       <Suspense fallback={<p>Loading...</p>}>
@@ -58,7 +59,7 @@ function App() {
               <Route path="/" element={<HomeSelector />} />
               <Route path="/reembolso/*" element={<Home />} />
               <Route path="/compras" element={<PedidosTable />} />
-              <Route path="/compras/novo" element={<NovoPedido />} />
+              <Route path="/compras/novo" element={<NovoPedido open={openNovoPedido} onOpenChange={setOpenNovoPedido} onSuccess={() => setOpenNovoPedido(false)} />} />
             </Route>
 
             {/* Add this to allow Tempo routes to work */}

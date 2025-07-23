@@ -1,18 +1,25 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
 interface NovoPedidoProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
-  onCancel?: () => void;
 }
 
-const NovoPedido: React.FC<NovoPedidoProps> = ({ onSuccess, onCancel }) => {
+const NovoPedido: React.FC<NovoPedidoProps> = ({ open, onOpenChange, onSuccess }) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [total, setTotal] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -92,6 +99,7 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ onSuccess, onCancel }) => {
         }
       }
       if (onSuccess) onSuccess();
+      onOpenChange(false);
     } catch (err: any) {
       setError(err.message || "Erro ao criar pedido");
     } finally {
@@ -100,9 +108,11 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ onSuccess, onCancel }) => {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-[80vh] bg-black/40 p-2">
-      <div className="w-full max-w-2xl rounded-xl shadow-lg bg-white p-10">
-        <h2 className="text-2xl font-bold text-center mb-8 text-gray-900">Novo Pedido de Compra</h2>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl w-full p-8 sm:rounded-xl">
+        <DialogHeader>
+          <DialogTitle>Novo Pedido de Compra</DialogTitle>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 max-h-[70vh] overflow-y-auto">
           <div>
             <label className="block mb-1 text-sm font-medium text-gray-700">Título</label>
@@ -196,19 +206,17 @@ const NovoPedido: React.FC<NovoPedidoProps> = ({ onSuccess, onCancel }) => {
             )}
           </div>
           {error && <div className="text-red-500 text-sm text-center">{error}</div>}
-          <div className="flex gap-2 mt-4">
+          <DialogFooter>
             <Button type="submit" className="w-full h-12 text-lg bg-primary text-white font-bold rounded-md hover:bg-primary/90 transition" disabled={loading}>
               {loading ? "Salvando..." : "Salvar Pedido"}
             </Button>
-            {onCancel && (
-              <Button type="button" variant="outline" className="w-full h-12 text-lg border-gray-300 font-bold rounded-md" onClick={onCancel} disabled={loading}>
-                Cancelar
-              </Button>
-            )}
-          </div>
+            <Button type="button" variant="outline" className="w-full h-12 text-lg border-gray-300 font-bold rounded-md" onClick={() => onOpenChange(false)} disabled={loading}>
+              Cancelar
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

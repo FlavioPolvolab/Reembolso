@@ -270,7 +270,7 @@ const PedidosTable: React.FC = () => {
       {/* Modal de novo pedido */}
       <Dialog open={showNovoModal} onOpenChange={open => setShowNovoModal(open)}>
         <DialogContent className="max-w-xl p-0">
-          <NovoPedido onSuccess={() => handleNovoClose(true)} onCancel={() => handleNovoClose(false)} />
+          <NovoPedido open={showNovoModal} onOpenChange={setShowNovoModal} onSuccess={() => handleNovoClose(true)} />
         </DialogContent>
       </Dialog>
       {/* Modal de detalhes do pedido */}

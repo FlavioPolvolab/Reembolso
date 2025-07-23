@@ -67,6 +67,15 @@ export const addPurchaseOrderItem = async (purchaseOrderId: string, name: string
   return true;
 };
 
+export const updatePurchaseOrderItem = async (itemId: string, name: string, quantity: number, unit_price: number) => {
+  const { error } = await (supabase as any)
+    .from("purchase_order_items")
+    .update({ name, quantity, unit_price })
+    .eq("id", itemId);
+  if (error) throw error;
+  return true;
+};
+
 export const deletePurchaseOrderItem = async (itemId: string) => {
   const { error } = await (supabase as any)
     .from("purchase_order_items")

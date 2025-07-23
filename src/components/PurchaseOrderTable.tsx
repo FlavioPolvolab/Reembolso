@@ -190,6 +190,43 @@ const PurchaseOrderTable: React.FC<PurchaseOrderTableProps> = ({
                         </Button>
                       )}
                     </div>
+                  ) : order.status === "pending" ? (
+                    <div className="flex gap-2 items-center">
+                      <Button variant="ghost" size="icon" onClick={() => onViewDetails && onViewDetails(order)}>
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">Ver detalhes</span>
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Abrir menu</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => onViewDetails && onViewDetails(order)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            Ver detalhes
+                          </DropdownMenuItem>
+                          {hasRole && hasRole("approver") && (
+                            <DropdownMenuItem onClick={() => onApprove && onApprove(order)}>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                              Aprovar
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => onReject && onReject(order)}>
+                            <XCircle className="mr-2 h-4 w-4 text-red-600" />
+                            Rejeitar
+                          </DropdownMenuItem>
+                          {(isAdmin || (hasRole && hasRole("approver"))) && (
+                            <DropdownMenuItem onClick={() => onDelete && onDelete(order)}>
+                              <XCircle className="mr-2 h-4 w-4 text-red-600" />
+                              Excluir
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   ) : (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -198,31 +235,11 @@ const PurchaseOrderTable: React.FC<PurchaseOrderTableProps> = ({
                           <span className="sr-only">Abrir menu</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent>
                         <DropdownMenuItem onClick={() => onViewDetails && onViewDetails(order)}>
                           <Eye className="mr-2 h-4 w-4" />
                           Ver detalhes
                         </DropdownMenuItem>
-                        {order.status === "pending" && (
-                          <>
-                            {hasRole && hasRole("approver") && (
-                              <DropdownMenuItem onClick={() => onApprove && onApprove(order)}>
-                                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                                Aprovar
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => onReject && onReject(order)}>
-                              <XCircle className="mr-2 h-4 w-4 text-red-600" />
-                              Rejeitar
-                            </DropdownMenuItem>
-                            {(isAdmin || (hasRole && hasRole("approver"))) && (
-                              <DropdownMenuItem onClick={() => onDelete && onDelete(order)}>
-                                <XCircle className="mr-2 h-4 w-4 text-red-600" />
-                                Excluir
-                              </DropdownMenuItem>
-                            )}
-                          </>
-                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
