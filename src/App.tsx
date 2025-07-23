@@ -14,6 +14,9 @@ import AuthLayout from "./components/layout/AuthLayout";
 import AdminPanel from "./components/admin/AdminPanel";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import routes from "tempo-routes";
+import HomeSelector from "./pages/HomeSelector";
+import PedidosTable from "./pages/compras/PedidosTable";
+import NovoPedido from "./pages/compras/NovoPedido";
 
 // Componente para proteger rotas baseado em papéis
 const RoleProtectedRoute = ({
@@ -52,15 +55,10 @@ function App() {
             </Route>
 
             <Route element={<AuthLayout requireAuth={true} />}>
-              <Route path="/" element={<Home />} />
-              <Route
-                path="/admin"
-                element={
-                  <RoleProtectedRoute requiredRole="admin">
-                    <AdminPanel />
-                  </RoleProtectedRoute>
-                }
-              />
+              <Route path="/" element={<HomeSelector />} />
+              <Route path="/reembolso/*" element={<Home />} />
+              <Route path="/compras" element={<PedidosTable />} />
+              <Route path="/compras/novo" element={<NovoPedido />} />
             </Route>
 
             {/* Add this to allow Tempo routes to work */}

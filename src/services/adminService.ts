@@ -18,18 +18,18 @@ export const promoteToAdmin = async (email: string) => {
     // Primeiro, verificar se o usuário existe
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("id, email, roles")
+      .select("id, email, role") // Corrigido: roles -> role
       .eq("email", email)
       .single();
 
-    if (userError) {
+    if (userError || !userData) {
       return {
         success: false,
-        message: `Usuário com email ${email} não encontrado`,
+        message: `Usuário com email ${email} não encontrado ou erro ao buscar: ${userError?.message}`,
       };
     }
 
-    if (userData.roles && userData.roles.includes("admin")) {
+    if (userData.role === "admin") { // Corrigido: roles -> role, includes -> ===
       return {
         success: false,
         message: `Usuário ${email} já é um administrador`,
@@ -39,17 +39,20 @@ export const promoteToAdmin = async (email: string) => {
     // Obter o ID do usuário atual (administrador)
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
-    if (!user) {
+
+    if (authError || !user) {
       return {
         success: false,
-        message: "Usuário não autenticado",
+        message: "Usuário administrador não autenticado ou erro: " + authError?.message,
       };
     }
 
-    // Chamar a função para adicionar o papel de admin
-    const { data, error: rpcError } = await supabase.rpc("add_role_to_user", {
-      target_user_id: userData.id,
+    // Chamar a função RPC para adicionar o papel de admin
+    // Usando 'as any' para contornar possível erro de tipagem TS2345
+    const { error: rpcError } = await supabase.rpc("add_role_to_user" as any, {
+      target_user_id: userData.id, // Acessado após checar userError
       new_role: "admin",
       admin_user_id: user.id,
     });
@@ -80,19 +83,19 @@ export const addRoleToUser = async (email: string, role: UserRole) => {
     // Verificar se o usuário existe
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("id, email, roles")
+      .select("id, email, role") // Corrigido: roles -> role
       .eq("email", email)
       .single();
 
-    if (userError) {
+    if (userError || !userData) {
       return {
         success: false,
-        message: `Usuário com email ${email} não encontrado`,
+        message: `Usuário com email ${email} não encontrado ou erro ao buscar: ${userError?.message}`,
       };
     }
 
-    // Verificar se o usuário já tem o papel
-    if (userData.roles && userData.roles.includes(role)) {
+    // Verificar se o usuário já tem o papel (assumindo um papel por usuário)
+    if (userData.role === role) { // Corrigido: roles -> role, includes -> ===
       return {
         success: false,
         message: `Usuário ${email} já possui o papel ${role}`,
@@ -102,17 +105,20 @@ export const addRoleToUser = async (email: string, role: UserRole) => {
     // Obter o ID do usuário atual (administrador)
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
-    if (!user) {
+
+    if (authError || !user) {
       return {
         success: false,
-        message: "Usuário não autenticado",
+        message: "Usuário administrador não autenticado ou erro: " + authError?.message,
       };
     }
 
-    // Chamar a função para adicionar o papel
-    const { data, error: rpcError } = await supabase.rpc("add_role_to_user", {
-      target_user_id: userData.id,
+    // Chamar a função RPC para adicionar o papel
+    // Usando 'as any' para contornar possível erro de tipagem TS2345
+    const { error: rpcError } = await supabase.rpc("add_role_to_user" as any, {
+      target_user_id: userData.id, // Acessado após checar userError
       new_role: role,
       admin_user_id: user.id,
     });
@@ -133,9 +139,9 @@ export const addRoleToUser = async (email: string, role: UserRole) => {
 };
 
 /**
- * Remove um papel específico de um usuário
+ * Remove um papel específico de um usuário (assumindo que remover significa definir como 'user')
  * @param email Email do usuário
- * @param role Papel a ser removido
+ * @param role Papel a ser removido (se for admin, volta para user?)
  * @returns Promise com status de sucesso e mensagem
  */
 export const removeRoleFromUser = async (email: string, role: UserRole) => {
@@ -143,41 +149,42 @@ export const removeRoleFromUser = async (email: string, role: UserRole) => {
     // Verificar se o usuário existe
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("id, email, roles")
+      .select("id, email, role") // Corrigido: roles -> role
       .eq("email", email)
       .single();
 
-    if (userError) {
+    if (userError || !userData) {
       return {
         success: false,
-        message: `Usuário com email ${email} não encontrado`,
+        message: `Usuário com email ${email} não encontrado ou erro ao buscar: ${userError?.message}`,
       };
     }
 
-    // Verificar se o usuário tem o papel
-    if (!userData.roles || !userData.roles.includes(role)) {
+    // Verificar se o usuário tem o papel a ser removido
+    if (userData.role !== role) { // Corrigido: !userData.roles || !userData.roles.includes(role) -> userData.role !== role
       return {
         success: false,
-        message: `Usuário ${email} não possui o papel ${role}`,
+        message: `Usuário ${email} não possui o papel ${role} para ser removido`,
       };
     }
 
     // Obter o ID do usuário atual (administrador)
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
-    if (!user) {
+
+    if (authError || !user) {
       return {
         success: false,
-        message: "Usuário não autenticado",
+        message: "Usuário administrador não autenticado ou erro: " + authError?.message,
       };
     }
 
-    // Chamar a função para remover o papel
-    const { data, error: rpcError } = await supabase.rpc(
-      "remove_role_from_user",
-      {
-        target_user_id: userData.id,
+    // Chamar a função RPC para remover o papel
+    // Usando 'as any' para contornar possível erro de tipagem TS2345
+    const { error: rpcError } = await supabase.rpc("remove_role_from_user" as any, {
+        target_user_id: userData.id, // Acessado após checar userError
         role_to_remove: role,
         admin_user_id: user.id,
       },
@@ -202,22 +209,24 @@ export const removeRoleFromUser = async (email: string, role: UserRole) => {
  * Verifica se o usuário atual é um administrador
  * @returns Promise com booleano indicando se o usuário é administrador
  */
-export const checkAdminStatus = async () => {
+export const checkAdminStatus = async (): Promise<boolean> => {
   try {
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
-    if (!user) return false;
+
+    if (authError || !user) return false;
 
     const { data, error } = await supabase
       .from("users")
-      .select("roles")
+      .select("role") // Corrigido: roles -> role
       .eq("id", user.id)
       .single();
 
     if (error || !data) return false;
 
-    return data.roles && data.roles.includes("admin");
+    return data.role === "admin"; // Corrigido: roles -> role, includes -> ===
   } catch (error) {
     console.error("Erro ao verificar status de administrador:", error);
     return false;
@@ -229,25 +238,27 @@ export const checkAdminStatus = async () => {
  * @param role Papel a ser verificado
  * @returns Promise com booleano indicando se o usuário tem o papel
  */
-export const checkUserRole = async (role: UserRole) => {
+export const checkUserRole = async (role: UserRole): Promise<boolean> => {
   try {
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
-    if (!user) return false;
+
+    if (authError || !user) return false;
 
     const { data, error } = await supabase
       .from("users")
-      .select("roles")
+      .select("role") // Corrigido: roles -> role
       .eq("id", user.id)
       .single();
 
     if (error || !data) return false;
 
     // Administradores têm acesso a todas as funções
-    if (data.roles && data.roles.includes("admin")) return true;
+    if (data.role === "admin") return true; // Corrigido: roles -> role, includes -> ===
 
-    return data.roles && data.roles.includes(role);
+    return data.role === role; // Corrigido: roles -> role, includes -> ===
   } catch (error) {
     console.error(`Erro ao verificar papel ${role} do usuário:`, error);
     return false;
@@ -276,3 +287,4 @@ export const listUsers = async () => {
     };
   }
 };
+
