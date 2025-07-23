@@ -10,14 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { Check, X, FileText, Download, Loader2 } from "lucide-react";
+import { Check, X, FileText, Download, Loader2, CheckCircle, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   fetchExpenseById,
   updateExpenseStatus,
   getReceiptUrl,
+  updatePaymentStatus,
+  deleteExpense,
 } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
+import { format } from "date-fns";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
 interface Receipt {
   id: string;
@@ -33,6 +37,15 @@ interface ExpenseDetailProps {
   onStatusChange?: () => void;
 }
 
+const TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Tempo limite excedido ao carregar detalhes.")), ms))
+  ]);
+}
+
 const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
   expenseId,
   isOpen = false,
@@ -45,22 +58,19 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [receiptUrls, setReceiptUrls] = useState<Record<string, string>>({});
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasRole } = useAuth();
   const { toast } = useToast();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isCurrent = true;
+    setError(null);
     if (isOpen && expenseId) {
-      loadExpenseDetails();
-    }
-  }, [isOpen, expenseId, onStatusChange]);
-
-  const loadExpenseDetails = async () => {
-    if (!expenseId) return;
-
+      (async () => {
     setLoading(true);
     try {
-      const data = await fetchExpenseById(expenseId);
-      console.log("Expense data loaded:", data);
+          const data = await withTimeout(fetchExpenseById(expenseId), TIMEOUT_MS);
+          if (!isCurrent) return;
       setExpense(data);
 
       // Load receipt URLs
@@ -69,27 +79,31 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
         for (const receipt of data.receipts) {
           try {
             const url = await getReceiptUrl(receipt.storage_path);
+                if (!isCurrent) return;
             urls[receipt.id] = url;
           } catch (error) {
-            console.error(
-              `Error loading receipt URL for ${receipt.id}:`,
-              error,
-            );
+                if (!isCurrent) return;
+            console.error(`Erro ao carregar URL do comprovante ${receipt.id}:`, error);
           }
         }
         setReceiptUrls(urls);
       }
-    } catch (error) {
-      console.error("Error loading expense details:", error);
+        } catch (error: any) {
+          if (!isCurrent) return;
+          setExpense(null);
+          setError(error?.message || "Erro ao carregar detalhes do reembolso.");
       toast({
-        title: "Error",
-        description: "Failed to load expense details.",
+            title: "Erro",
+            description: error?.message || "Falha ao carregar detalhes do reembolso.",
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+          if (isCurrent) setLoading(false);
+        }
+      })();
     }
-  };
+    return () => { isCurrent = false; };
+  }, [isOpen, expenseId]);
 
   const handleApprove = async () => {
     if (!expense) return;
@@ -152,6 +166,44 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
     setRejectionReason("");
   };
 
+  const handlePaymentStatusChange = async (isPaid: boolean) => {
+    try {
+      await updatePaymentStatus(expenseId, isPaid);
+      toast({
+        title: "Sucesso",
+        description: isPaid ? "Despesa marcada como paga" : "Status de pagamento atualizado",
+      });
+      if (onStatusChange) onStatusChange();
+    } catch (error) {
+      console.error("Erro ao atualizar status de pagamento:", error);
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar status de pagamento",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!expense) return;
+    if (!window.confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) return;
+    try {
+      await deleteExpense(expense.id);
+      toast({
+        title: "Sucesso",
+        description: "Despesa excluída com sucesso!",
+      });
+      if (onStatusChange) onStatusChange();
+      onClose();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a despesa.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -179,10 +231,31 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[700px] bg-white">
+          <VisuallyHidden>
+            <DialogTitle>Carregando detalhes do reembolso</DialogTitle>
+          </VisuallyHidden>
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-2">Loading expense details...</span>
+            <span className="ml-2">Carregando detalhes do reembolso...</span>
           </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (error) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[700px] bg-white">
+          <DialogHeader>
+            <DialogTitle>Erro ao carregar detalhes</DialogTitle>
+          </DialogHeader>
+          <p>{error}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Fechar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     );
@@ -276,6 +349,35 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
                 </p>
               </div>
             )}
+
+            {expense.status === "approved" && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium mb-2">Status do Pagamento</h3>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant={expense.payment_status === "paid" ? "default" : "outline"}
+                    onClick={() => handlePaymentStatusChange(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Pago
+                  </Button>
+                  <Button
+                    variant={expense.payment_status !== "paid" ? "default" : "outline"}
+                    onClick={() => handlePaymentStatusChange(false)}
+                    className="flex items-center gap-2"
+                  >
+                    <Clock className="h-4 w-4" />
+                    Pendente
+                  </Button>
+                </div>
+                {expense.payment_status === "paid" && expense.paid_at && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Pago em: {format(new Date(expense.paid_at), "dd/MM/yyyy")}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -286,19 +388,16 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
                   <div key={receipt.id} className="space-y-2">
                     <Card className="overflow-hidden">
                       <CardContent className="p-0">
-                        {receipt.file_type.includes("pdf") ? (
-                          <div className="flex items-center justify-center h-64 bg-gray-100">
-                            <FileText size={48} className="text-gray-400" />
-                            <span className="ml-2 text-gray-500">
-                              {receipt.file_name}
-                            </span>
-                          </div>
-                        ) : receipt.file_type.includes("image") ? (
+                        {receipt.file_type && receipt.file_type.startsWith("image") ? (
                           receiptUrls[receipt.id] ? (
                             <img
                               src={receiptUrls[receipt.id]}
                               alt={receipt.file_name}
                               className="w-full h-64 object-contain bg-gray-100"
+                              onError={e => {
+                                e.currentTarget.src = '/fallback-image.png';
+                                console.error('Erro ao carregar imagem do comprovante:', receipt.file_name, receiptUrls[receipt.id]);
+                              }}
                             />
                           ) : (
                             <div className="flex items-center justify-center h-64 bg-gray-100">
@@ -319,9 +418,7 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
                       <Button
                         variant="outline"
                         className="w-full flex items-center justify-center gap-2"
-                        onClick={() =>
-                          window.open(receiptUrls[receipt.id], "_blank")
-                        }
+                        onClick={() => window.open(receiptUrls[receipt.id], "_blank")}
                       >
                         <Download size={16} />
                         Baixar Comprovante
@@ -384,12 +481,12 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
                 </Button>
                 <Button
                   variant="destructive"
-                  onClick={handleReject}
+                  onClick={handleDelete}
                   className="flex items-center gap-1"
                   disabled={isSubmitting}
                 >
                   <X size={16} />
-                  Rejeitar
+                  Excluir
                 </Button>
                 <Button
                   onClick={handleApprove}

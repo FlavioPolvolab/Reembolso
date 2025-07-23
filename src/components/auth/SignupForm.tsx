@@ -63,7 +63,7 @@ const SignupForm = () => {
     setSuccess(null);
 
     try {
-      const { error } = await signUp(data.email, data.password, data.name);
+      const { error } = await signUp(data.email, data.password, data.name, 'user');
       if (error) {
         let errorMsg = "Falha ao criar conta. Tente novamente.";
         if (error.message?.includes("already registered")) {

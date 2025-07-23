@@ -37,6 +37,7 @@ interface Expense {
   costCenter: string;
   category: string;
   paymentDate: string;
+  payment_status?: string;
   receipt?: string;
 }
 
@@ -46,6 +47,11 @@ interface ExpenseTableProps {
   onApprove?: (expense: Expense) => void;
   onReject?: (expense: Expense) => void;
   onBulkAction?: (expenses: Expense[], action: "approve" | "reject") => void;
+  showPaymentStatus?: boolean;
+  onBulkMarkPaid?: (expenses: Expense[]) => void;
+  isAdmin?: boolean;
+  hasRole?: (role: string) => boolean;
+  onDelete?: (expense: Expense) => void;
 }
 
 const ExpenseTable: React.FC<ExpenseTableProps> = ({
@@ -54,6 +60,11 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
   onApprove = () => {},
   onReject = () => {},
   onBulkAction = () => {},
+  showPaymentStatus = false,
+  onBulkMarkPaid = () => {},
+  isAdmin = false,
+  hasRole,
+  onDelete,
 }) => {
   const [selectedExpenses, setSelectedExpenses] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{
@@ -127,6 +138,14 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
     setSelectedExpenses([]);
   };
 
+  const handleBulkMarkPaid = () => {
+    const selectedItems = expenses.filter((expense) =>
+      selectedExpenses.includes(expense.id),
+    );
+    onBulkMarkPaid(selectedItems);
+    setSelectedExpenses([]);
+  };
+
   // Pagination
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -168,21 +187,33 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
   return (
     <div className="bg-white rounded-lg shadow-md">
       {/* Bulk actions */}
-      {selectedExpenses.length > 0 && (
+      {isAdmin && selectedExpenses.length > 0 && (
         <div className="p-4 bg-muted/20 border-b flex items-center justify-between">
           <span className="text-sm font-medium">
             {selectedExpenses.length} itens selecionados
           </span>
           <div className="space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBulkApprove}
-              className="text-green-600 border-green-600 hover:bg-green-50"
-            >
-              <CheckCircle className="mr-1 h-4 w-4" />
-              Aprovar Selecionados
-            </Button>
+            {showPaymentStatus ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkMarkPaid}
+                className="text-green-600 border-green-600 hover:bg-green-50"
+              >
+                <CheckCircle className="mr-1 h-4 w-4" />
+                Pago Selecionados
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkApprove}
+                className="text-green-600 border-green-600 hover:bg-green-50"
+              >
+                <CheckCircle className="mr-1 h-4 w-4" />
+                Aprovar Selecionados
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -207,54 +238,16 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                   onCheckedChange={(checked) => handleSelectAll(!!checked)}
                 />
               </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("id")}
-              >
-                ID
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("name")}
-              >
-                Nome
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("description")}
-              >
-                Descrição
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("amount")}
-              >
-                Valor
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("status")}
-              >
-                Status
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("date")}
-              >
-                Data
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("costCenter")}
-              >
-                Centro de Custo
-              </TableHead>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => requestSort("category")}
-              >
-                Categoria
-              </TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("name")}>Nome</TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("description")}>Descrição</TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("amount")}>Valor</TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("status")}>Status</TableHead>
+              {showPaymentStatus && (
+                <TableHead>Status do Pagamento</TableHead>
+              )}
+              <TableHead className="cursor-pointer" onClick={() => requestSort("date")}>Data</TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("costCenter")}>Centro de Custo</TableHead>
+              <TableHead className="cursor-pointer" onClick={() => requestSort("category")}>Categoria</TableHead>
               <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -269,11 +262,19 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                     }
                   />
                 </TableCell>
-                <TableCell className="font-medium">{expense.id}</TableCell>
                 <TableCell>{expense.name}</TableCell>
                 <TableCell>{expense.description}</TableCell>
                 <TableCell>{formatCurrency(expense.amount)}</TableCell>
                 <TableCell>{getStatusBadge(expense.status)}</TableCell>
+                {showPaymentStatus && (
+                  <TableCell>
+                    {expense.payment_status === "paid" ? (
+                      <Badge className="bg-green-100 text-green-800">Pago</Badge>
+                    ) : (
+                      <Badge className="bg-yellow-100 text-yellow-800">Pendente</Badge>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   {new Date(expense.date).toLocaleDateString("pt-BR")}
                 </TableCell>
@@ -294,14 +295,22 @@ const ExpenseTable: React.FC<ExpenseTableProps> = ({
                       </DropdownMenuItem>
                       {expense.status === "pending" && (
                         <>
-                          <DropdownMenuItem onClick={() => onApprove(expense)}>
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                            Aprovar
-                          </DropdownMenuItem>
+                          {hasRole && hasRole('approver') && (
+                            <DropdownMenuItem onClick={() => onApprove(expense)}>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                              Aprovar
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => onReject(expense)}>
                             <XCircle className="mr-2 h-4 w-4 text-red-600" />
                             Rejeitar
                           </DropdownMenuItem>
+                          {(isAdmin || (hasRole && hasRole('approver'))) && (
+                            <DropdownMenuItem onClick={() => onDelete && onDelete(expense)}>
+                              <XCircle className="mr-2 h-4 w-4 text-red-600" />
+                              Excluir
+                            </DropdownMenuItem>
+                          )}
                         </>
                       )}
                     </DropdownMenuContent>

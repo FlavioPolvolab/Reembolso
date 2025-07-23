@@ -28,6 +28,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale/pt-BR";
 import { CalendarIcon, Upload, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -198,14 +199,10 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
         cost_center_id: data.costCenterId,
         category_id: data.categoryId,
         payment_date: data.paymentDate.toISOString().split("T")[0],
-        status: "pending", // Add default status
+        status: "pending" as "pending",
       };
 
       const result = await createExpense(expenseData, files);
-
-      if (!result || result.error) {
-        throw new Error(result?.error || "Falha ao enviar despesa");
-      }
 
       toast({
         title: "Sucesso",
@@ -441,30 +438,7 @@ const ExpenseForm = ({ onSubmit, onClose }: ExpenseFormProps) => {
                     selected={selectedDate}
                     onSelect={(date) => date && setValue("paymentDate", date)}
                     initialFocus
-                    locale={{
-                      localize: {
-                        day: (n) =>
-                          ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][n],
-                        month: (n) =>
-                          [
-                            "Janeiro",
-                            "Fevereiro",
-                            "Março",
-                            "Abril",
-                            "Maio",
-                            "Junho",
-                            "Julho",
-                            "Agosto",
-                            "Setembro",
-                            "Outubro",
-                            "Novembro",
-                            "Dezembro",
-                          ][n],
-                      },
-                      formatLong: {
-                        date: () => "dd/MM/yyyy",
-                      },
-                    }}
+                    locale={ptBR}
                   />
                 </PopoverContent>
               </Popover>

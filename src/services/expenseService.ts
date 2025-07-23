@@ -10,7 +10,9 @@ export interface Expense {
   cost_center_id: string;
   category_id: string;
   payment_date: string;
-  status?: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected";
+  payment_status?: "pending" | "paid";
+  paid_at?: string;
   rejection_reason?: string;
   submitted_date?: string;
   updated_at?: string;
@@ -189,6 +191,28 @@ export const updateExpenseStatus = async (
   }
 };
 
+export const updatePaymentStatus = async (id: string, isPaid: boolean) => {
+  try {
+    const updateData = {
+      payment_status: isPaid ? "paid" : "pending",
+      paid_at: isPaid ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from("expenses")
+      .update(updateData)
+      .eq("id", id)
+      .select();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Erro ao atualizar status de pagamento:", error);
+    throw error;
+  }
+};
+
 export const getReceiptUrl = async (path: string) => {
   try {
     const { data, error } = await supabase.storage
@@ -242,5 +266,22 @@ export const fetchCostCenters = async () => {
   } catch (error) {
     console.error("Erro ao processar centros de custo:", error);
     return [];
+  }
+};
+
+export const deleteExpense = async (id: string) => {
+  try {
+    const { error } = await supabase
+      .from("expenses")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      console.error("Erro ao deletar despesa:", error);
+      throw error;
+    }
+    return true;
+  } catch (error) {
+    console.error("Erro ao processar exclusão da despesa:", error);
+    throw error;
   }
 };

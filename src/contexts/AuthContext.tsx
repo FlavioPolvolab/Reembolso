@@ -23,6 +23,7 @@ type AuthContextType = {
     email: string,
     password: string,
     name: string,
+    role: string
   ) => Promise<{
     error: any | null;
     data: any | null;
@@ -43,6 +44,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
 
   useEffect(() => {
+    let initialLoad = true;
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -58,9 +60,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Evitar chamada duplicada do fetchUserProfile
+      if (initialLoad) {
+        initialLoad = false;
+        return;
+      }
       setSession(session);
       setUser(session?.user ?? null);
-
       if (session?.user) {
         await fetchUserProfile(session.user.id);
       } else {
@@ -71,8 +77,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     });
 
+    // Listener para restaurar estado ao voltar para a aba
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setIsLoading(false);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -80,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     try {
       // Wait a moment to ensure the trigger has time to create the user profile
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const { data, error } = await supabase
         .from("users")
@@ -118,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               if (newData) {
                 setProfile(newData);
                 setIsAdmin(newData?.role === "admin");
-                setUserRoles(newData?.roles || []);
+                setUserRoles(newData?.role ? [newData.role as UserRole] : []);
                 setIsLoading(false);
                 return;
               }
@@ -131,9 +146,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUserRoles([]);
       } else {
         console.log("Perfil de usuário carregado:", data);
+        // Corrigir para aceitar tanto roles (array) quanto role (string)
+        const roles = (data as any).roles || (data?.role ? [data.role] : []);
         setProfile(data);
-        setIsAdmin(data?.role === "admin");
-        setUserRoles(data?.roles || []);
+        setIsAdmin(Array.isArray(roles) ? roles.includes("admin") : roles === "admin");
+        setUserRoles(Array.isArray(roles) ? roles : (roles ? [roles] : []));
       }
     } catch (error) {
       console.error("Erro ao buscar perfil do usuário:", error);
@@ -153,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return { data, error };
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const signUp = async (email: string, password: string, name: string, role: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -172,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Verificar se o perfil do usuário foi criado pelo trigger
       if (data?.user) {
         // Esperar um momento para o trigger executar
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Verificar se o perfil foi criado
         const { data: profileData, error: profileError } = await supabase
@@ -188,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               id: data.user.id,
               name,
               email,
-              role: "user",
+              roles: [role],
             },
           ]);
 
@@ -198,6 +215,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               insertError,
             );
           }
+        } else {
+          // Se o perfil já existe, atualiza o campo roles
+          await supabase.from("users").update({ roles: [role] } as any).eq("id", data.user.id);
         }
       }
 
@@ -210,6 +230,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setIsAdmin(false);
+    setUserRoles([]);
+    setIsLoading(false);
   };
 
   // Função para verificar se o usuário tem um papel específico

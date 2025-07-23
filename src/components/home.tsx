@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,66 +9,124 @@ import {
   XCircle,
   Clock,
   Loader2,
+  LogOut,
+  RefreshCw
 } from "lucide-react";
 import ExpenseTable from "./ExpenseTable";
 import FilterBar from "./FilterBar";
-import ExpenseForm from "./ExpenseForm";
+import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseDetail from "./ExpenseDetail";
-import { fetchExpenses } from "@/services/expenseService";
+import { fetchExpenses, updateExpenseStatus, updatePaymentStatus, deleteExpense } from "@/services/expenseService";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import UserRegisterTab from "@/components/admin/UserRegisterTab";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showExpenseDetail, setShowExpenseDetail] = useState(false);
-  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(
-    null,
-  );
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [filters, setFilters] = useState<{
+    search: string;
+    status?: string;
+    category?: string;
+    costCenter?: string;
+    dateRange?: { from: Date | undefined; to: Date | undefined };
+  }>({ search: "" });
   const { toast } = useToast();
+  const { isAdmin, user, signOut, hasRole } = useAuth();
+  const navigate = useNavigate();
+  const dataLoadedRef = useRef(false);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout>();
+  const mountedRef = useRef(true);
+  const initialLoadDoneRef = useRef(false);
 
-  // Carregar despesas do banco de dados
-  useEffect(() => {
-    loadExpenses();
-  }, [activeTab, filters]);
-
-  const loadExpenses = async () => {
-    setIsLoading(true);
+  const loadExpenses = useCallback(async (showLoading = true) => {
+    if (isLoading || !mountedRef.current) return;
+    
     try {
-      // Combinar filtros com o filtro de status baseado na aba ativa
-      const statusFilter = activeTab !== "all" ? { status: activeTab } : {};
-      const combinedFilters = { ...filters, ...statusFilter };
+      if (showLoading) {
+        setIsLoading(true);
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+        }
+        loadingTimeoutRef.current = setTimeout(() => {
+          if (mountedRef.current) {
+            setIsLoading(false);
+          }
+        }, 5000);
+      }
 
-      const data = await fetchExpenses(combinedFilters);
+      const data = await fetchExpenses(filters);
+      if (!mountedRef.current) return;
 
-      // Mapear dados para o formato esperado pelo ExpenseTable
       const formattedExpenses = data.map((expense) => ({
         id: expense.id,
-        name: expense.users?.name || "Desconhecido",
+        user_id: expense.user_id,
+        name: expense.users && 'name' in expense.users ? expense.users.name : "Desconhecido",
         description: expense.description,
         amount: expense.amount,
         status: expense.status,
+        payment_status: 'payment_status' in expense ? expense.payment_status : undefined,
         date: expense.submitted_date,
         purpose: expense.purpose,
-        costCenter: expense.cost_centers?.name || "",
-        category: expense.categories?.name || "",
+        costCenter: expense.cost_centers && 'name' in expense.cost_centers ? expense.cost_centers.name : "",
+        category: expense.categories && 'name' in expense.categories ? expense.categories.name : "",
         paymentDate: expense.payment_date,
       }));
-
+      
       setExpenses(formattedExpenses);
+      dataLoadedRef.current = true;
+      initialLoadDoneRef.current = true;
     } catch (error) {
       console.error("Erro ao carregar despesas:", error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as despesas. Tente novamente.",
-        variant: "destructive",
-      });
+      if (mountedRef.current) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível carregar as despesas. Tente novamente.",
+          variant: "destructive",
+        });
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading && mountedRef.current) {
+        setIsLoading(false);
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+        }
+      }
     }
-  };
+  }, [filters, isLoading, toast]);
+
+  // Efeito de limpeza ao desmontar
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Carregamento inicial apenas uma vez
+  useEffect(() => {
+    if (!initialLoadDoneRef.current && mountedRef.current) {
+      loadExpenses();
+    }
+  }, [loadExpenses]);
+
+  const handleRefresh = useCallback(async () => {
+    await loadExpenses(true);
+    if (mountedRef.current) {
+      toast({
+        title: "Sucesso",
+        description: "Dados atualizados com sucesso!",
+      });
+    }
+  }, [loadExpenses, toast]);
 
   const handleViewDetails = (expense) => {
     setSelectedExpenseId(expense.id);
@@ -111,77 +169,197 @@ const Home = () => {
     loadExpenses();
   };
 
-  // Contar despesas por status
-  const pendingCount = expenses.filter((e) => e.status === "pending").length;
-  const approvedCount = expenses.filter((e) => e.status === "approved").length;
-  const rejectedCount = expenses.filter((e) => e.status === "rejected").length;
+  const handleDelete = async (expense) => {
+    if (!window.confirm("Tem certeza que deseja excluir esta despesa? Esta ação não pode ser desfeita.")) return;
+    try {
+      await deleteExpense(expense.id);
+      toast({
+        title: "Sucesso",
+        description: "Despesa excluída com sucesso!",
+      });
+      loadExpenses();
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a despesa.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Memoize os dados filtrados para evitar recálculos desnecessários
+  const filteredExpenses = useMemo(() => {
+    let result = expenses;
+    if (!isAdmin && user?.id) {
+      result = result.filter(e => e.user_id === user.id);
+    }
+    if (filters.search && filters.search.trim() !== "") {
+      const search = filters.search.trim().toLowerCase();
+      result = result.filter(e =>
+        Object.values(e).some(v =>
+          v && typeof v === "string" && v.toLowerCase().includes(search)
+        )
+      );
+    }
+    if (activeTab === "pending") result = result.filter(e => e.status === "pending");
+    if (activeTab === "approved") result = result.filter(e => e.status === "approved");
+    if (activeTab === "rejected") result = result.filter(e => e.status === "rejected");
+    return result;
+  }, [expenses, isAdmin, user?.id, filters.search, activeTab]);
+
+  // Resumo SEMPRE com todos os dados
+  const pendingExpenses = expenses.filter((e) => e.status === "pending");
+  const approvedExpenses = expenses.filter((e) => e.status === "approved");
+  const rejectedExpenses = expenses.filter((e) => e.status === "rejected");
+  const paidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status === "paid");
+  const unpaidExpenses = expenses.filter((e) => e.status === "approved" && e.payment_status !== "paid");
+  const paidCount = paidExpenses.length;
+  const unpaidCount = unpaidExpenses.length;
+  const approvedCount = approvedExpenses.length;
+  const pendingCount = pendingExpenses.length;
+  const rejectedCount = rejectedExpenses.length;
   const totalCount = expenses.length;
+  const paidTotal = paidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const unpaidTotal = unpaidExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const approvedTotal = approvedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const pendingTotal = pendingExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const rejectedTotal = rejectedExpenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalAmount = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+
+  // Calcular totais em R$
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    });
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível fazer logout. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="container mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Sistema de Reembolso</h1>
-          <Button
-            onClick={handleCreateExpense}
-            className="flex items-center gap-2"
-          >
-            <PlusCircle className="h-5 w-5" />
-            Novo Reembolso
-          </Button>
+          <div className="flex gap-2 items-center">
+            <Button
+              onClick={handleRefresh}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-5 w-5" />
+              Atualizar
+            </Button>
+            <Button
+              onClick={handleCreateExpense}
+              className="flex items-center gap-2"
+            >
+              <PlusCircle className="h-5 w-5" />
+              Novo Reembolso
+            </Button>
+            {isAdmin && (
+              <Button
+                onClick={() => setActiveTab("register")}
+                className="flex items-center gap-2"
+              >
+                <PlusCircle className="h-5 w-5" />
+                Cadastrar Usuário
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={handleLogout}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <LogOut className="h-5 w-5" />
+              Sair
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total de Solicitações
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalCount}</div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Pendentes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-amber-500" />
-                <span className="text-2xl font-bold">{pendingCount}</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Aprovados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-2xl font-bold">{approvedCount}</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-white">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Rejeitados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <XCircle className="h-4 w-4 text-red-500" />
-                <span className="text-2xl font-bold">{rejectedCount}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {isAdmin && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="bg-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Total de Solicitações
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalCount}</div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(totalAmount)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Pendentes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  <span className="text-2xl font-bold">{pendingCount}</span>
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(pendingTotal)}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Aprovados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span className="text-2xl font-bold">{approvedCount}</span>
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(approvedTotal)}
+                </div>
+                <div className="mt-2 text-xs">
+                  <span className="text-green-600">Pagos: {paidCount} ({formatCurrency(paidTotal)})</span>
+                  <br />
+                  <span className="text-amber-600">Pendentes: {unpaidCount} ({formatCurrency(unpaidTotal)})</span>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Rejeitados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-500" />
+                  <span className="text-2xl font-bold">{rejectedCount}</span>
+                </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {formatCurrency(rejectedTotal)}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Tabs
           defaultValue="pending"
@@ -204,7 +382,7 @@ const Home = () => {
             </TabsTrigger>
           </TabsList>
 
-          <FilterBar onFilterChange={handleFilterChange} />
+          <FilterBar onFilterChange={setFilters} />
 
           {isLoading ? (
             <div className="flex items-center justify-center p-12">
@@ -215,32 +393,49 @@ const Home = () => {
             <>
               <TabsContent value="pending" className="mt-4">
                 <ExpenseTable
-                  expenses={expenses.filter((e) => e.status === "pending")}
+                  expenses={filteredExpenses}
                   onViewDetails={handleViewDetails}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
+                  showPaymentStatus={false}
+                  isAdmin={isAdmin}
+                  hasRole={hasRole}
+                  onBulkAction={async (selected, action) => {
+                    await Promise.all(selected.map(e => updateExpenseStatus(e.id, action === "approve" ? "approved" : "rejected")));
+                    await loadExpenses();
+                  }}
+                  onDelete={handleDelete}
                 />
               </TabsContent>
               <TabsContent value="approved" className="mt-4">
                 <ExpenseTable
-                  expenses={expenses.filter((e) => e.status === "approved")}
+                  expenses={filteredExpenses}
                   onViewDetails={handleViewDetails}
+                  showPaymentStatus={true}
+                  isAdmin={isAdmin}
+                  onBulkMarkPaid={async (selected) => {
+                    await Promise.all(
+                      selected.map(e => updatePaymentStatus(e.id, true))
+                    );
+                    await loadExpenses();
+                  }}
                 />
               </TabsContent>
               <TabsContent value="rejected" className="mt-4">
                 <ExpenseTable
-                  expenses={expenses.filter((e) => e.status === "rejected")}
+                  expenses={filteredExpenses}
                   onViewDetails={handleViewDetails}
+                  showPaymentStatus={false}
+                  isAdmin={isAdmin}
                 />
               </TabsContent>
+              {isAdmin && activeTab === "register" && (
+                <TabsContent value="register" className="mt-4">
+                  <UserRegisterTab />
+                </TabsContent>
+              )}
             </>
           )}
         </Tabs>
       </div>
-
-      {showExpenseForm && (
-        <ExpenseForm onClose={handleCloseForm} onSubmit={handleCloseForm} />
-      )}
 
       {showExpenseDetail && selectedExpenseId && (
         <ExpenseDetail
@@ -250,6 +445,15 @@ const Home = () => {
           onStatusChange={handleStatusChange}
         />
       )}
+
+      <Dialog open={showExpenseForm} onOpenChange={setShowExpenseForm}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo Reembolso</DialogTitle>
+          </DialogHeader>
+          <ExpenseForm onClose={handleCloseForm} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

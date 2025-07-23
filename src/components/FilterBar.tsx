@@ -15,8 +15,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { DateRange, SelectRangeEventHandler } from "react-day-picker";
 import { fetchCategories, fetchCostCenters } from "@/services/expenseService";
+import { format } from "date-fns";
 
 interface FilterBarProps {
   onFilterChange?: (filters: {
@@ -92,107 +93,17 @@ const FilterBar = ({ onFilterChange = () => {} }: FilterBarProps) => {
             placeholder="Buscar despesas..."
             className="pl-9"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              onFilterChange({
+                search: e.target.value,
+                status: "",
+                category: "",
+                costCenter: "",
+                dateRange: { from: undefined, to: undefined }
+              });
+            }}
           />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pendente</SelectItem>
-              <SelectItem value="approved">Aprovado</SelectItem>
-              <SelectItem value="rejected">Rejeitado</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Categoria" />
-            </SelectTrigger>
-            <SelectContent>
-              {categories.length > 0 ? (
-                categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </SelectItem>
-                ))
-              ) : (
-                <SelectItem value="" disabled>
-                  Carregando...
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-
-          <Select value={costCenter} onValueChange={setCostCenter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Centro de Custo" />
-            </SelectTrigger>
-            <SelectContent>
-              {costCenters.length > 0 ? (
-                costCenters.map((center) => (
-                  <SelectItem
-                    key={
-                      center.id || `cost-center-${center.name || Date.now()}`
-                    }
-                    value={
-                      center.id || `cost-center-${center.name || Date.now()}`
-                    }
-                  >
-                    {center.name}
-                  </SelectItem>
-                ))
-              ) : (
-                <SelectItem value="loading-cost-centers" disabled>
-                  Carregando...
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-[240px] justify-start text-left font-normal"
-              >
-                <Calendar className="mr-2 h-4 w-4" />
-                {dateRange.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, "dd/MM/yyyy")} -{" "}
-                      {format(dateRange.to, "dd/MM/yyyy")}
-                    </>
-                  ) : (
-                    format(dateRange.from, "dd/MM/yyyy")
-                  )
-                ) : (
-                  <span>Período</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <CalendarComponent
-                mode="range"
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={2}
-              />
-            </PopoverContent>
-          </Popover>
-
-          <Button onClick={handleFilterChange} className="gap-2">
-            <Filter className="h-4 w-4" />
-            Aplicar Filtros
-          </Button>
-
-          <Button variant="outline" onClick={resetFilters} className="gap-2">
-            <X className="h-4 w-4" />
-            Limpar
-          </Button>
         </div>
       </div>
     </div>
