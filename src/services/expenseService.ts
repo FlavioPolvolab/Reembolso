@@ -117,9 +117,9 @@ export const createExpense = async (expense: Expense, files: File[]) => {
     // Fazer upload de arquivos e criar registros de comprovantes
     if (files.length > 0 && expenseData) {
       const receipts = await Promise.all(
-        files.map(async (file) => {
+        files.map(async (file, i) => {
           const fileExt = file.name.split(".").pop();
-          const fileName = `${expenseData.id}/${Date.now()}.${fileExt}`;
+          const fileName = `${expenseData.id}/${Date.now()}_${i}.${fileExt}`;
           const filePath = `${fileName}`;
 
           // Fazer upload do arquivo para o armazenamento
@@ -271,6 +271,15 @@ export const fetchCostCenters = async () => {
 
 export const deleteExpense = async (id: string) => {
   try {
+    // Deletar todos os receipts relacionados antes de deletar a expense
+    const { error: receiptsError } = await supabase
+      .from("receipts")
+      .delete()
+      .eq("expense_id", id);
+    if (receiptsError) {
+      console.error("Erro ao deletar comprovantes:", receiptsError);
+      throw receiptsError;
+    }
     const { error } = await supabase
       .from("expenses")
       .delete()

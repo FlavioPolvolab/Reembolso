@@ -207,6 +207,17 @@ const Home = () => {
     return result;
   }, [expenses, isAdmin, user?.id, filters.search, activeTab]);
 
+  // Ordenar aprovados: pendentes de pagamento primeiro
+  const filteredExpensesSorted = useMemo(() => {
+    if (activeTab === "approved") {
+      return [...filteredExpenses].sort((a, b) => {
+        if ((a.payment_status === "paid") === (b.payment_status === "paid")) return 0;
+        return a.payment_status === "paid" ? 1 : -1;
+      });
+    }
+    return filteredExpenses;
+  }, [filteredExpenses, activeTab]);
+
   // Resumo SEMPRE com todos os dados
   const pendingExpenses = expenses.filter((e) => e.status === "pending");
   const approvedExpenses = expenses.filter((e) => e.status === "approved");
@@ -407,7 +418,7 @@ const Home = () => {
               </TabsContent>
               <TabsContent value="approved" className="mt-4">
                 <ExpenseTable
-                  expenses={filteredExpenses}
+                  expenses={filteredExpensesSorted}
                   onViewDetails={handleViewDetails}
                   showPaymentStatus={true}
                   isAdmin={isAdmin}

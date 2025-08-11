@@ -281,7 +281,7 @@ const ExpenseDetail: React.FC<ExpenseDetailProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px] bg-white">
+      <DialogContent className="sm:max-w-[700px] bg-white max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center justify-between">
             <span>Detalhes do Reembolso</span>

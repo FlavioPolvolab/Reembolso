@@ -209,3 +209,25 @@ ALTER PUBLICATION supabase_realtime ADD TABLE cost_centers;
 ALTER PUBLICATION supabase_realtime ADD TABLE users;
 ALTER PUBLICATION supabase_realtime ADD TABLE expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE receipts;
+
+-- Função para atualizar o total_amount da ordem de compra
+create or replace function update_purchase_order_total()
+returns trigger as $$
+begin
+  update purchase_orders
+  set total_amount = (
+    select coalesce(sum(unit_price * quantity), 0)
+    from purchase_order_items
+    where purchase_order_id = NEW.purchase_order_id
+  )
+  where id = NEW.purchase_order_id;
+  return NEW;
+end;
+$$ language plpgsql;
+
+-- Trigger para INSERT, UPDATE, DELETE em purchase_order_items
+drop trigger if exists trg_update_purchase_order_total on purchase_order_items;
+create trigger trg_update_purchase_order_total
+after insert or update or delete on purchase_order_items
+for each row
+execute function update_purchase_order_total();
