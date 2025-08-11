@@ -47,7 +47,6 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
   const [isPaid, setIsPaid] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editItems, setEditItems] = useState<{ [id: string]: { name: string; quantity: number; unit_price: number; saving?: boolean } }>({});
-  console.log("editItems state:", editItems);
 
   useEffect(() => {
     let isCurrent = true;
@@ -248,8 +247,6 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
 
   if (!pedido) return <div className="p-8 text-red-500">Pedido não encontrado.</div>;
 
-  console.log("Status do pedido:", pedido?.status);
-
   return (
     <Dialog open={!!onClose} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl w-full p-8 sm:rounded-xl max-h-[80vh] overflow-y-auto">
@@ -365,10 +362,8 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
               </TableHead>
               <TableBody>
                 {items.map((item) => {
-                  console.log("Renderizando item", item.id, "status:", pedido.status);
                   if (true) { // Forçar renderização do bloco de edição para depuração
                     const edit = editItems[item.id] || { name: item.name, quantity: item.quantity, unit_price: item.unit_price };
-                    console.log("Renderizando botão salvar para", item.id, edit);
                     return (
                       <TableRow key={item.id}>
                         <TableCell>
@@ -413,7 +408,6 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
                           <Button
                             size="sm"
                             onClick={async () => {
-                              console.log("Cliquei em salvar", item.id, edit);
                               setEditItems(editItems => ({
                                 ...editItems,
                                 [item.id]: { ...edit, saving: true }
@@ -422,11 +416,13 @@ const PedidoDetail: React.FC<PedidoDetailProps> = ({ pedidoId, onClose }) => {
                                 await updatePurchaseOrderItem(item.id, edit.name, edit.quantity, edit.unit_price);
                                 const itemsData = await fetchPurchaseOrderItems(pedidoId);
                                 setItems(itemsData || []);
-                                setEditItems(editItems => ({ ...editItems, [item.id]: undefined }));
+                                // Atualizar o total_amount na ordem
+                                const newTotal = (itemsData || []).reduce((sum, it) => sum + (Number(it.unit_price) * Number(it.quantity)), 0);
+                                await (supabase as any).from("purchase_orders").update({ total_amount: newTotal }).eq("id", pedidoId);
                                 toast({ title: "Item atualizado!" });
+                                setEditItems(editItems => ({ ...editItems, [item.id]: undefined }));
                               } catch (e) {
                                 toast({ title: "Erro ao atualizar item", variant: "destructive" });
-                                console.error("Erro ao atualizar item:", e);
                                 alert("Erro ao atualizar item: " + (e?.message || JSON.stringify(e)));
                               } finally {
                                 setEditItems(editItems => ({

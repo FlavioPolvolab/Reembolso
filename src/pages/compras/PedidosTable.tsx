@@ -67,6 +67,10 @@ const PedidosTable: React.FC = () => {
   const totalCount = pedidos.length;
   const pending = pedidos.filter(p => p.status === "pending");
   const approved = pedidos.filter(p => p.status === "approved");
+  const approvedSorted = [...approved].sort((a, b) => {
+    if (a.is_paid === b.is_paid) return 0;
+    return a.is_paid ? 1 : -1;
+  });
   const rejected = pedidos.filter(p => p.status === "rejected");
   const totalValue = pedidos.reduce((acc, p) => acc + (p.total_amount || 0), 0);
   const pendingValue = pending.reduce((acc, p) => acc + (p.total_amount || 0), 0);
@@ -90,10 +94,10 @@ const PedidosTable: React.FC = () => {
       );
     }
     if (activeTab === "pending") result = result.filter(p => p.status === "pending");
-    if (activeTab === "approved") result = result.filter(p => p.status === "approved");
+    if (activeTab === "approved") result = approvedSorted;
     if (activeTab === "rejected") result = result.filter(p => p.status === "rejected");
     return result;
-  }, [pedidos, search, activeTab]);
+  }, [pedidos, search, activeTab, approvedSorted]);
 
   // Handler para fechar modal e recarregar lista
   const handleNovoClose = (refresh?: boolean) => {
